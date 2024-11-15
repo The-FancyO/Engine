@@ -1,0 +1,259 @@
+Hello GPT i need you to write me a collision detection and resolution function that uses c++
+and the SFML game development framework, here is my codebase so far:
+
+main.cpp
+```cpp
+#include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/System/Clock.hpp>
+#include <SFML/Window/VideoMode.hpp>
+#include <ctime>
+#include <iostream>
+
+#include "../include/game.hpp"
+
+int main() {
+    std::cout<<"Game Starting"<<"\n";
+
+    const int screen_width = 1280;
+    const int screen_height = 720;
+
+    sf::Clock clock;
+
+    sf::RenderWindow window(sf::VideoMode(screen_width, screen_height), "Amorphous");
+
+    _game game;
+
+    window.setFramerateLimit(60);
+
+    while (window.isOpen()) {
+        float _dt = clock.restart().asSeconds();
+
+        game.poll_events(window);
+
+        game.update(_dt);
+
+        window.clear(); 
+        game.render(window);
+        window.display();
+    }
+
+    return 0;
+}
+```
+
+game.hpp
+```cpp
+#pragma once
+
+#include "entity.hpp"
+#include "player.hpp"
+#include <SFML/Graphics.hpp>
+#include <SFML/Graphics/RenderWindow.hpp>
+#include <vector>
+
+#ifndef GAME_CLASS
+#define GAME_CLASS
+
+class _game {
+public:
+    _game();
+    ~_game();
+
+    void poll_events(sf::RenderWindow &_window);
+
+    void update(float _dt);
+    void render(sf::RenderWindow &_window);
+
+private:
+    _player player;
+    
+    sf::RectangleShape tile;
+
+    std::vector<_entity*> entities; // Use raw pointers for simplicity 
+};
+
+#endif // !GAME_CLASS
+```
+
+game.cpp
+```cpp
+#include "../include/game.hpp"
+#include <SFML/Graphics/Rect.hpp>
+#include <SFML/Graphics/RenderWindow.hpp>
+#include <SFML/Graphics/Shape.hpp>
+#include <SFML/System/Vector2.hpp>
+#include <SFML/Window/VideoMode.hpp>
+
+_game::_game():
+    player(sf::Vector2f(100, 100)) {
+    tile.setSize({32, 32});
+    tile.setFillColor(sf::Color::Cyan);
+    tile.setPosition({32, 32});
+}
+_game::~_game() {
+    // Clean up dynamically allocated entities
+    for (auto entity : entities) {
+        delete entity; // Free memory for each entity
+    }
+}
+
+void _game::poll_events(sf::RenderWindow &_window) {
+    // Process events
+    sf::Event event;
+    while (_window.pollEvent(event))
+    {
+        // Close window: exit
+        if (event.type == sf::Event::Closed)
+            _window.close();
+
+        player.poll_events();
+    }
+}
+
+void _game::update(float _dt) { 
+    player.update(_dt);
+
+    for (auto& i_entity : entities) {  // Update other entities (if any)
+        i_entity->update(_dt);
+    }
+}
+
+void _game::render(sf::RenderWindow &_window) {
+    for (auto& i_entity : entities) { // Use non-const reference
+        i_entity->render(_window);
+    }
+
+    _window.draw(tile);
+
+    player.render(_window);
+}
+```
+
+player.hpp
+```cpp
+#include <SFML/Graphics/Rect.hpp>
+#include <SFML/System/Vector2.hpp>
+
+#ifndef PLAYER_CLASS
+#define PLAYER_CLASS
+
+class _player {
+public:
+    _player(sf::Vector2f _pos);
+    ~_player();
+
+    void poll_events();
+    void update(float _dt);
+    void render(sf::RenderWindow &_window);
+
+    sf::Vector2f get_pos();
+    sf::Vector2f get_size();
+    sf::Vector2f get_vel();
+    sf::FloatRect get_bounds();
+
+    void set_pos(sf::Vector2f new_pos);
+    void set_size(sf::Vector2f new_size);
+    void set_vel(sf::Vector2f new_vel);
+
+private:
+    sf::Vector2f pos; 
+    sf::Vector2f size;
+
+    float speed;
+    sf::Vector2f vel;
+
+    sf::RectangleShape rect;
+};
+
+#endif // !PLAYER_CLASS
+```
+
+player.cpp
+```cpp
+#include "../include/player.hpp"
+#include <SFML/Graphics/Rect.hpp>
+#include <SFML/System/Vector2.hpp>
+#include <SFML/Window/Joystick.hpp>
+#include <cmath>
+
+_player::_player(sf::Vector2f _pos) {
+    pos = _pos;
+    size = sf::Vector2f(32, 64);
+
+    speed = 300.0f;
+    vel = sf::Vector2f(0.0f, 0.0f);
+
+    rect.setPosition(pos);
+    rect.setSize(size);
+    rect.setRotation(0.0f);
+    rect.setFillColor(sf::Color::Yellow);
+}
+
+_player::~_player() { }
+
+void _player::poll_events() {
+    const float DEAD_ZONE = 20.0f;  // Adjust as needed for joystick dead zone
+
+    float stick_x = sf::Joystick::getAxisPosition(0, sf::Joystick::X);
+    float stick_y = sf::Joystick::getAxisPosition(0, sf::Joystick::Y);
+
+    // Dead zone filtering
+    if (std::abs(stick_x) < DEAD_ZONE) stick_x = 0.0f;
+    if (std::abs(stick_y) < DEAD_ZONE) stick_y = 0.0f;
+
+    vel = sf::Vector2f(0.0f, 0.0f);
+
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::W) || stick_y < -50) {
+        vel.y -= speed;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::S) || stick_y > 50) {
+        vel.y += speed;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::D) || stick_x > 50) {
+        vel.x += speed;
+    }
+    if (sf::Keyboard::isKeyPressed(sf::Keyboard::A) || stick_x < -50) {
+        vel.x -= speed;
+    }
+
+    // Normalize the velocity vector to avoid diagonal speed bug
+    if (vel.x != 0.0f || vel.y != 0.0f) {
+        float length = std::sqrt(vel.x * vel.x + vel.y * vel.y);
+        vel.x /= length;
+        vel.y /= length;
+    }
+
+    vel *= speed;  // Reapply speed after normalizing
+}
+
+void _player::update(float _dt) {
+    pos += vel * _dt;
+
+    rect.setPosition(pos);
+}
+
+void _player::render(sf::RenderWindow &_window) {
+    _window.draw(rect);
+}
+
+sf::Vector2f _player::get_pos() { return rect.getPosition(); }
+sf::Vector2f _player::get_size() { return rect.getSize(); }
+sf::Vector2f _player::get_vel() { return vel; }
+sf::FloatRect _player::get_bounds() { return rect.getGlobalBounds(); }
+
+void _player::set_pos(sf::Vector2f new_pos) {
+    pos = new_pos;
+    rect.setPosition(new_pos);
+}
+
+void _player::set_size(sf::Vector2f new_size) {
+    size = new_size;
+    rect.setSize(new_size);
+}
+
+void _player::set_vel(sf::Vector2f new_vel) {
+    vel = new_vel;
+}
+```
+
+I want the player to stop when he collides with the tile object, but be able to move in any other direction.
